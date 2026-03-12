@@ -1,0 +1,39 @@
+name: Build and Push OCI Image
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine image name
+        id: image
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            echo "name=ghcr.io/${{ github.repository_owner }}/kas-ubuntu-22.04:latest" >> $GITHUB_OUTPUT
+          else
+            echo "name=ghcr.io/${{ github.repository_owner }}/kas-ubuntu-22.04:${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build OCI image
+        run: |
+          podman build \
+            -t ${{ steps.image.outputs.name }} \
+            -f ./Containerfile \
+            .
+
+      - name: Push OCI image
+        if: github.ref_name == 'main' && github.event_name != 'pull_request'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u ${{ github.actor }} --password-stdin
+          podman push ${{ steps.image.outputs.name }}
